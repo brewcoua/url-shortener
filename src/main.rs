@@ -71,8 +71,9 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
     info!("Connected to MongoDB");
 
-    // This address is localhost
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(
+        ([0, 0, 0, 0, 0, 0, 0, 0], std::env::var("PORT").unwrap_or("8080".to_string()).parse().unwrap())
+    );
 
     // Bind to the port and listen for incoming TCP connections
     let listener = TcpListener::bind(addr).await?;
