@@ -29,9 +29,11 @@ async fn redirect(pool: web::types::State<DbPool>,
         return web::HttpResponse::NotFound().finish();
     }
 
+    let cl_slug = slug.clone();
+
     let mut conn = pool.get().expect("Failed to get connection from pool");
     let result = web::block(move || {
-        db::models::get_link(&mut conn, &slug)
+        db::models::get_link(&mut conn, &cl_slug)
     }).await
         .ok();
 
