@@ -6,15 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dotenv = "0.15.0"
-http-body-util = "0.1"
-hyper = { version = "1", features = ["full"] }
-hyper-util = { version = "0.1", features = ["full"] }
-tokio = { version = "1", features = ["full"] }
-bytes = "1.5.0"
-mongodb = "2.8.0"
+diesel = "2.1.4"
+diesel-async = { version = "0.4.1", features = ["postgres"] }
 std-logger = "0.5.2"
 log = "0.4.20"
+dotenvy = "0.15.7"
+ntex = { version = "0.7", features = ["tokio"] }
 
 [[bin]]
 name = "url-shortener"

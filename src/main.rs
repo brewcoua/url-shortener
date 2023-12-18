@@ -5,90 +5,57 @@ use std::net::SocketAddr;
 use log::{info, error, trace};
 use std_logger::request;
 
-use dotenv::dotenv;
+mod lib;
 
-use mongodb::{Client, options::ClientOptions};
-use mongodb::bson::{doc, Document};
+use dotenvy::dotenv;
 
-use bytes::Bytes;
-use http_body_util::Full;
-use hyper::server::conn::http1;
-use hyper::service::service_fn;
-use hyper::{Request, Response};
-use hyper_util::rt::TokioIo;
-use tokio::net::TcpListener;
+use ntex::web;
 
-static mut CLIENT: Option<Client> = None;
+#[web::get("/")]
+async fn index() -> impl web::Responder {
+    web::HttpResponse::Ok().body("Hello world!")
+}
 
-async fn handle(req: Request<impl hyper::body::Body>) -> Result<Response<Full<Bytes>>, Infallible> {
-    request!("GET {}", req.uri());
-
-    // Get slug from URL
-    let slug = req.uri().path().trim_start_matches('/');
-
+#[web::get("/{slug}")]
+async fn redirect(conn: web::types::State<lib::AsyncPgConnection>,
+                  path: web::types::Path<(String,)>) -> web::HttpResponse {
     // Find slug in database
-    let client = unsafe { CLIENT.as_ref().unwrap() };
-    let db = client.database("prod");
-    let coll = db.collection::<Document>("links");
-    let filter = doc! { "slug": slug };
+    let link = match lib::models::get_link(&mut *conn, &path.0).await {
+        Ok(link) => link,
+        Err(e) => {
+            error!("Error getting link: {}", e);
+            return web::HttpResponse::InternalServerError().body("Internal Server Error");
+        }
+    };
 
     // If slug is found, redirect to URL
     if let Ok(Some(doc)) = coll.find_one(filter, None).await {
         let url = doc.get_str("url").unwrap();
         trace!("Redirecting to {}", url);
-        return Ok(Response::builder()
-            .status(301)
+        return web::HttpResponse::Found()
             .header("Location", url)
-            .body(Full::new(Bytes::new()))
-            .unwrap());
+            .finish();
     }
 
     // If slug is not found, return 404
     trace!("Slug not found");
-    Ok(Response::builder()
-        .status(404)
-        .body(Full::new(Bytes::new()))
-        .unwrap())
+    web::HttpResponse::NotFound().body("404 Not Found")
 }
 
-#[tokio::main]
-pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+#[ntex::main]
+async fn main() -> std::io::Result<()> {
     dotenv().ok();
     std_logger::Config::json().init();
 
-    let db_cluster: String = std::env::var("DB_CLUSTER").expect("DB_CLUSTER must be set");
-    let db_user: String = std::env::var("DB_USER").expect("DB_USER must be set");
-    let db_pass: String = std::env::var("DB_PASS").expect("DB_PASSWORD must be set");
-    let db_url: String = "mongodb+srv://".to_owned() + &db_user + ":" + &db_pass + "@" + &db_cluster + "/test?retryWrites=true&w=majority";
+    let mut conn = lib::establish_connection().await;
 
-    info!("Connecting to MongoDB at {}", db_cluster);
-    let client_options = ClientOptions::parse(db_url)
-        .await?;
-
-
-    unsafe {
-        CLIENT = Some(Client::with_options(client_options)?);
-    }
-    info!("Connected to MongoDB");
-
-    let addr = SocketAddr::from(
-        ([0, 0, 0, 0, 0, 0, 0, 0], std::env::var("PORT").unwrap_or("8080".to_string()).parse().unwrap())
-    );
-
-    // Bind to the port and listen for incoming TCP connections
-    let listener = TcpListener::bind(addr).await?;
-    info!("Listening on http://{}", addr);
-    loop {
-        let (tcp, _) = listener.accept().await?;
-        let io = TokioIo::new(tcp);
-
-        tokio::task::spawn(async move {
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(io, service_fn(handle))
-                .await
-            {
-                error!("Error while serving HTTP connection: {:?}", err);
-            }
-        });
-    }
+    web::HttpServer::new(|| {
+        web::App::new()
+            .state(conn.clone())
+            .service(index)
+            .service(redirect)
+    })
+        .bind(("127.0.0.1", 8080))?
+        .run()
+        .await
 }
