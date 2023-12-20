@@ -13,6 +13,7 @@ pub struct Link {
     pub updated_at: PgTimestamp,
 }
 
+#[tracing::instrument(skip(conn))]
 pub fn get_link(conn: &mut DbConn, slugs: &str) -> QueryResult<Link> {
     use crate::db::schema::links::dsl::*;
 
@@ -21,6 +22,7 @@ pub fn get_link(conn: &mut DbConn, slugs: &str) -> QueryResult<Link> {
         .first::<Link>(conn)
 }
 
+#[tracing::instrument(skip(conn))]
 pub fn increment_clicks(conn: &mut DbConn, slugs: &str) -> QueryResult<usize> {
     use crate::db::schema::links::dsl::*;
 

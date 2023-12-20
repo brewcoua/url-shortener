@@ -10,13 +10,11 @@ use crate::{
     db::models
 };
 
+#[tracing::instrument(skip(state))]
 pub async fn redirect(
     State(state): State<AppState>,
     Path(slug): Path<String>
 ) -> impl IntoResponse {
-    let span = tracing::span!(tracing::Level::INFO, "Redirect");
-    let _guard = span.enter();
-
     if slug.len() < 3 {
         tracing::info!("Slug too small (<3)");
         return StatusCode::NOT_FOUND.into_response();
