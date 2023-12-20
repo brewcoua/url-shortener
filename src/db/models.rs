@@ -1,3 +1,4 @@
+use diesel::data_types::PgTimestamp;
 use diesel::prelude::*;
 use crate::state::{DbConn};
 
@@ -7,6 +8,9 @@ use crate::state::{DbConn};
 pub struct Link {
     pub url: String,
     pub slug: String,
+    pub clicks: i32,
+    pub created_at: PgTimestamp,
+    pub updated_at: PgTimestamp,
 }
 
 pub fn get_link(conn: &mut DbConn, slugs: &str) -> QueryResult<Link> {
@@ -15,4 +19,12 @@ pub fn get_link(conn: &mut DbConn, slugs: &str) -> QueryResult<Link> {
     links
         .filter(slug.eq(slugs))
         .first::<Link>(conn)
+}
+
+pub fn increment_clicks(conn: &mut DbConn, slugs: &str) -> QueryResult<usize> {
+    use crate::db::schema::links::dsl::*;
+
+    diesel::update(links.filter(slug.eq(slugs)))
+        .set(clicks.eq(clicks + 1))
+        .execute(conn)
 }

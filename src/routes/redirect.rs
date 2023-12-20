@@ -26,7 +26,14 @@ pub async fn redirect(
 
     let mut conn = state.pool.get().expect("Failed to get connection from pool");
     let result = task::spawn_blocking(move || {
-        models::get_link(&mut conn, &cl_slug)
+        let link = models::get_link(&mut conn, &cl_slug);
+        match link {
+            Ok(link) => {
+                models::increment_clicks(&mut conn, &cl_slug).expect("Failed to increment clicks");
+                Ok(link)
+            },
+            Err(e) => Err(e)
+        }
     }).await.expect("Failed to run blocking task");
 
 

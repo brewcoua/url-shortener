@@ -6,5 +6,8 @@ diesel::table! {
         url -> Varchar,
         #[max_length = 255]
         slug -> Varchar,
+        clicks -> Int4,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
     }
 }
