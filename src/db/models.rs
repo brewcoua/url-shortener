@@ -1,5 +1,5 @@
 use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, PooledConnection};
+use crate::state::{DbConn};
 
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = crate::db::schema::links)]
@@ -9,7 +9,7 @@ pub struct Link {
     pub slug: String,
 }
 
-pub fn get_link(conn: &mut PooledConnection<ConnectionManager<PgConnection>>, slugs: &str) -> QueryResult<Link> {
+pub fn get_link(conn: &mut DbConn, slugs: &str) -> QueryResult<Link> {
     use crate::db::schema::links::dsl::*;
 
     links

@@ -1,60 +1,37 @@
 #![deny(warnings)]
 
-use log::{info, trace};
 use dotenvy::dotenv;
+use tracing::subscriber::set_global_default;
+use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
+use tracing_subscriber::{layer::SubscriberExt, filter::EnvFilter, Registry};
 
 use diesel::pg::PgConnection;
 use diesel::r2d2::{Pool, ConnectionManager};
 
-use ntex::web;
+use axum::{
+    Router,
+    routing::get,
+};
 
 mod db;
+mod routes;
+mod state;
 
-type DbPool = Pool<ConnectionManager<PgConnection>>;
-
-#[web::get("/")]
-async fn index() -> impl web::Responder {
-    web::HttpResponse::Found()
-        .header("Location", "https://www.brewen.dev")
-        .finish()
-}
-
-#[web::get("/{slug}")]
-async fn redirect(pool: web::types::State<DbPool>,
-                  path: web::types::Path<(String, )>) -> web::HttpResponse {
-    let (slug, ) = path.into_inner();
-
-    if slug.len() < 3 {
-        trace!("GET /{} - 404 (too short)", slug);
-        return web::HttpResponse::NotFound().finish();
-    }
-
-    let cl_slug = slug.clone();
-
-    let mut conn = pool.get().expect("Failed to get connection from pool");
-    let result = web::block(move || {
-        db::models::get_link(&mut conn, &cl_slug)
-    }).await
-        .ok();
-
-    let link = match result {
-        None => {
-            trace!("GET /{} - 404 (not found)", slug);
-            return web::HttpResponse::NotFound().finish();
-        }
-        Some(link) => link
-    };
-
-    trace!("GET /{} - 302 -> {}", slug, link.url);
-    web::HttpResponse::Found()
-        .header("Location", link.url)
-        .finish()
-}
-
-#[ntex::main]
-async fn main() -> std::io::Result<()> {
+#[tokio::main]
+async fn main() {
     dotenv().ok();
-    std_logger::Config::json().init();
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let formatting_layer = BunyanFormattingLayer::new(
+        "axum".into(),
+        std::io::stdout
+    );
+    let subscriber = Registry::default()
+        .with(env_filter)
+        .with(JsonStorageLayer)
+        .with(formatting_layer);
+    set_global_default(subscriber).expect("Failed to set subscriber");
+
 
     let manager = ConnectionManager::<PgConnection>::new(
         std::env::var("DATABASE_URL").expect("DATABASE_URL must be set")
@@ -63,15 +40,21 @@ async fn main() -> std::io::Result<()> {
         .test_on_check_out(true)
         .build(manager)
         .expect("Failed to create pool");
-    info!("Created database pool");
+    tracing::info!("Created database pool");
 
-    web::HttpServer::new(move || {
-        web::App::new()
-            .state(pool.clone())
-            .service(index)
-            .service(redirect)
-    })
-        .bind(("0.0.0.0", 8080))?
-        .run()
-        .await
+    let app_state = state::AppState {
+        pool
+    };
+
+    let app = Router::new()
+        .route("/", get(routes::root::root))
+        .route("/:slug", get(routes::redirect::redirect))
+        .with_state(app_state);
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
+    tracing::info!("Listening on {}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await.unwrap();
 }
+
+
+
