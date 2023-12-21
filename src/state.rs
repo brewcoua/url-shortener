@@ -1,12 +1,10 @@
-use diesel::PgConnection;
-use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
+use sqlx::{Pool, Postgres};
 
 use tracing::subscriber::set_global_default;
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{layer::SubscriberExt, filter::EnvFilter, Registry};
 
-pub type DbPool = Pool<ConnectionManager<PgConnection>>;
-pub type DbConn = PooledConnection<ConnectionManager<PgConnection>>;
+pub type DbPool = Pool<Postgres>;
 
 #[derive(Clone)]
 pub struct AppState {

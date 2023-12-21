@@ -1,4 +1,3 @@
-use tokio::task;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -20,34 +19,19 @@ pub async fn redirect(
         return StatusCode::NOT_FOUND.into_response();
     }
 
-    let cl_slug = slug.clone();
-
-    let mut conn = state.pool.get().expect("Failed to get connection from pool");
-    let result = task::spawn_blocking(move || {
-        let link = models::get_link(&mut conn, &cl_slug);
-        match link {
-            Ok(link) => {
-                models::increment_clicks(&mut conn, &cl_slug).expect("Failed to increment clicks");
-                Ok(link)
-            },
-            Err(e) => Err(e)
+    let link = models::get_link_and_increment(&state.pool, &slug).await;
+    match link {
+        Ok(link) => {
+            tracing::info!("Slug found and redirected");
+            Redirect::temporary(&link.url).into_response()
         }
-    }).await.expect("Failed to run blocking task");
-
-
-    // Check if the slug exists
-    let link = match result {
-        Ok(link) => link,
-        Err(e) => {
-            if e == diesel::NotFound {
+        Err(err) => {
+            if let sqlx::Error::RowNotFound = err {
                 tracing::info!("Slug not found");
                 return StatusCode::NOT_FOUND.into_response();
             }
-            tracing::error!("Failed to get link: {:?}", e);
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            tracing::info!("Unknown error: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
-    };
-
-    tracing::info!("Slug found and redirected");
-    Redirect::temporary(&link.url).into_response()
+    }
 }

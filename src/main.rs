@@ -1,9 +1,7 @@
 #![deny(warnings)]
 
 use dotenvy::dotenv;
-use diesel::pg::PgConnection;
-use diesel::r2d2::{Pool, ConnectionManager};
-
+use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
 use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
 
@@ -17,14 +15,12 @@ async fn main() {
     state::setup_tracing();
     state::setup_sentry();
 
-    let manager = ConnectionManager::<PgConnection>::new(
-        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set")
-    );
-    let pool = Pool::builder()
-        .test_on_check_out(true)
-        .build(manager)
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&*std::env::var("DATABASE_URL").expect("DATABASE_URL must be set"))
+        .await
         .expect("Failed to create pool");
-    tracing::info!("Created database pool");
+    tracing::info!("Connected to database and created pool");
 
     let app_state = state::AppState {
         pool

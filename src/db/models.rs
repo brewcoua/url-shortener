@@ -1,32 +1,24 @@
-use diesel::data_types::PgTimestamp;
-use diesel::prelude::*;
-use crate::state::{DbConn};
+use sqlx::Error;
+use crate::state::{DbPool};
 
-#[derive(Queryable, Selectable)]
-#[diesel(table_name = crate::db::schema::links)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
+#[derive(sqlx::FromRow)]
 pub struct Link {
-    pub url: String,
     pub slug: String,
+    pub url: String,
     pub clicks: i32,
-    pub created_at: PgTimestamp,
-    pub updated_at: PgTimestamp,
 }
 
 #[tracing::instrument(skip(conn))]
-pub fn get_link(conn: &mut DbConn, slugs: &str) -> QueryResult<Link> {
-    use crate::db::schema::links::dsl::*;
-
-    links
-        .filter(slug.eq(slugs))
-        .first::<Link>(conn)
-}
-
-#[tracing::instrument(skip(conn))]
-pub fn increment_clicks(conn: &mut DbConn, slugs: &str) -> QueryResult<usize> {
-    use crate::db::schema::links::dsl::*;
-
-    diesel::update(links.filter(slug.eq(slugs)))
-        .set(clicks.eq(clicks + 1))
-        .execute(conn)
+pub async fn get_link_and_increment(conn: &DbPool, slugs: &str) -> Result<Link, Error> {
+    sqlx::query_as::<_, Link>(
+        r#"
+        UPDATE links
+        SET clicks = clicks + 1
+        WHERE slug = $1
+        RETURNING *
+        "#,
+    )
+        .bind(slugs)
+        .fetch_one(conn)
+        .await
 }
